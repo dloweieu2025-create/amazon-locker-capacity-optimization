@@ -1,0 +1,11 @@
+name: amazon-locker-capacity
+
+channels:
+  - conda-forge
+
+dependencies:
+  - python=3.11
+  - pip
+  - pip:
+      - pyomo>=6.8,<7
+      - highspy>=1.7,<2
