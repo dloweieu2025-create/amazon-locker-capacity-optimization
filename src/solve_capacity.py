@@ -3,6 +3,7 @@
 
 import argparse
 import csv
+import math
 from pathlib import Path
 
 import pyomo.environ as pyo
@@ -29,35 +30,54 @@ def load_inputs(locker_file, demand_file, occupancy_file):
 
     if not {"locker_id", "capacity"} <= set(locker_cols):
         raise ValueError("locker.csv requires locker_id and capacity")
-    if "day" not in demand_cols:
-        raise ValueError("demand.csv requires day")
+    if not {"locker_id", "day"} <= set(demand_cols):
+        raise ValueError("demand.csv requires locker_id and day")
     if "days_since_arrival" not in occupancy_cols:
         raise ValueError("occupancy.csv requires days_since_arrival")
 
-    options = [c for c in demand_cols if c != "day"]
+    options = [c for c in demand_cols if c not in {"locker_id", "day"}]
     occupancy_options = [c for c in occupancy_cols if c != "days_since_arrival"]
     if not options or set(options) != set(occupancy_options):
         raise ValueError("Ship-option columns must match in demand and occupancy")
 
     lockers = [r["locker_id"].strip() for r in locker_rows]
     capacity = {r["locker_id"].strip(): int(r["capacity"]) for r in locker_rows}
-    days = sorted(int(r["day"]) for r in demand_rows)
+    days = sorted({int(r["day"]) for r in demand_rows})
     ages = sorted(int(r["days_since_arrival"]) for r in occupancy_rows)
-    if len(lockers) != len(set(lockers)) or len(days) != len(set(days)):
-        raise ValueError("Locker IDs and demand days must be unique")
+    if len(lockers) != len(set(lockers)) or any(not l for l in lockers):
+        raise ValueError("Locker IDs must be nonempty and unique")
+    if any(c <= 0 for c in capacity.values()):
+        raise ValueError("Locker capacities must be positive integers")
+    if days != list(range(1, max(days) + 1)):
+        raise ValueError("Demand days must be contiguous and start at 1")
+    pairs = [(r["locker_id"].strip(), int(r["day"])) for r in demand_rows]
+    if len(pairs) != len(set(pairs)):
+        raise ValueError("Each locker/day pair must occur exactly once")
+    if set(pairs) != {(l, t) for l in lockers for t in days}:
+        raise ValueError("Demand must contain every locker/day pair and no unknown lockers")
+    if len(ages) != len(set(ages)):
+        raise ValueError("Occupancy ages must be unique")
     if ages != list(range(max(ages) + 1)):
         raise ValueError("days_since_arrival must be contiguous and start at 0")
 
-    demand = {(s, int(r["day"])): float(r[s]) for r in demand_rows for s in options}
+    demand = {
+        (r["locker_id"].strip(), s, int(r["day"])): float(r[s])
+        for r in demand_rows for s in options
+    }
     occupancy = {
         (s, int(r["days_since_arrival"])): float(r[s])
         for r in occupancy_rows
         for s in options
     }
-    if any(v < 0 for v in demand.values()):
-        raise ValueError("Demand cannot be negative")
-    if any(v < 0 or v > 1 for v in occupancy.values()):
+    if any(not math.isfinite(v) or v < 0 for v in demand.values()):
+        raise ValueError("Demand must be finite and nonnegative")
+    if any(not math.isfinite(v) or v < 0 or v > 1 for v in occupancy.values()):
         raise ValueError("Occupancy probabilities must be between 0 and 1")
+    for s in options:
+        if occupancy[s, 0] != 1:
+            raise ValueError("Arrival-day occupancy must equal 1")
+        if any(occupancy[s, a] < occupancy[s, a + 1] for a in ages[:-1]):
+            raise ValueError("Occupancy probabilities must be nonincreasing with age")
     return lockers, options, days, ages, capacity, demand, occupancy
 
 
@@ -87,11 +107,12 @@ def build_model(data):
         model.T,
         rule=lambda m, l, t: sum(m.x[l, s, t] for s in m.S) <= capacity[l],
     )
-    # demand.csv has no locker_id, so demand is shared across lockers.
+    # Each location has its own demand; packages cannot be reassigned.
     model.demand_limit = pyo.Constraint(
+        model.L,
         model.S,
         model.T,
-        rule=lambda m, s, t: sum(m.y[l, s, t] for l in m.L) <= demand[s, t],
+        rule=lambda m, l, s, t: m.y[l, s, t] <= demand[l, s, t],
     )
     return model
 
@@ -133,6 +154,63 @@ def display(model, solver_name):
             print(f"{l},{t},{total:.2f}")
 
 
+def scenario_inputs(data, capacity_override=None, pickup_delay=0):
+    """Change capacity or pickup timing without regenerating demand."""
+    lockers, options, days, ages, capacity, demand, occupancy = data
+    if capacity_override is not None:
+        capacity = {l: capacity_override for l in lockers}
+    if pickup_delay:
+        new_ages = list(range(max(ages) + pickup_delay + 1))
+        occupancy = {
+            (s, a): 1.0 if a < pickup_delay else occupancy[s, a - pickup_delay]
+            for s in options for a in new_ages
+        }
+        ages = new_ages
+    return lockers, options, days, ages, capacity, demand, occupancy
+
+
+def write_csv(path, rows):
+    with path.open("w", newline="", encoding="utf-8") as file:
+        writer = csv.DictWriter(file, fieldnames=list(rows[0]))
+        writer.writeheader()
+        writer.writerows(rows)
+
+
+def export_results(model, data, output_dir):
+    """Export decisions, daily occupancy, and location-level summaries."""
+    lockers, options, days, ages, capacity, demand, occupancy = data
+    output_dir.mkdir(parents=True, exist_ok=True)
+    decisions, daily, summaries = [], [], []
+    for l in lockers:
+        for t in days:
+            for s in options:
+                accepted = int(round(pyo.value(model.y[l, s, t])))
+                decisions.append({
+                    "locker_id": l, "day": t, "ship_option": s,
+                    "demand": demand[l, s, t], "accepted": accepted,
+                    "rejected": round(demand[l, s, t] - accepted, 6),
+                    "expected_slots": round(pyo.value(model.x[l, s, t]), 6),
+                })
+            occupied = sum(pyo.value(model.x[l, s, t]) for s in options)
+            daily.append({
+                "locker_id": l, "day": t, "capacity": capacity[l],
+                "expected_occupancy": round(occupied, 6),
+                "unused_capacity": round(capacity[l] - occupied, 6),
+            })
+        requested = sum(demand[l, s, t] for s in options for t in days)
+        accepted = sum(int(round(pyo.value(model.y[l, s, t])))
+                       for s in options for t in days)
+        summaries.append({
+            "locker_id": l, "capacity": capacity[l], "demand": requested,
+            "accepted": accepted, "rejected": round(requested - accepted, 6),
+            "acceptance_rate": round(accepted / requested, 6) if requested else 0,
+        })
+    write_csv(output_dir / "decisions.csv", decisions)
+    write_csv(output_dir / "daily_occupancy.csv", daily)
+    write_csv(output_dir / "locker_summary.csv", summaries)
+    return summaries
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--locker", type=Path, default=DATA_DIR / "locker.csv")
@@ -140,13 +218,40 @@ def main():
     parser.add_argument("--occupancy", type=Path, default=DATA_DIR / "occupancy.csv")
     parser.add_argument("--solver", default="auto")
     parser.add_argument("--tee", action="store_true")
+    parser.add_argument("--scenarios", action="store_true",
+                        help="Also solve 23-slot, 69-slot, and slower-pickup scenarios")
+    parser.add_argument("--output-dir", type=Path, default=PROJECT_ROOT / "reports",
+                        help="Directory for result CSV files")
     args = parser.parse_args()
-    model = build_model(load_inputs(args.locker, args.demand, args.occupancy))
+    data = load_inputs(args.locker, args.demand, args.occupancy)
     solver_name, solver = get_solver(args.solver)
-    results = solver.solve(model, tee=args.tee)
-    if results.solver.termination_condition != TerminationCondition.optimal:
-        raise RuntimeError(f"Solver termination: {results.solver.termination_condition}")
-    display(model, solver_name)
+    scenarios = [("base", data)]
+    if args.scenarios:
+        scenarios.extend([
+            ("capacity_23", scenario_inputs(data, capacity_override=23)),
+            ("capacity_69", scenario_inputs(data, capacity_override=69)),
+            ("slower_pickups", scenario_inputs(data, pickup_delay=1)),
+        ])
+    comparison = []
+    for name, inputs in scenarios:
+        model = build_model(inputs)
+        results = solver.solve(model, tee=args.tee)
+        if results.solver.termination_condition != TerminationCondition.optimal:
+            raise RuntimeError(f"{name}: solver termination: "
+                               f"{results.solver.termination_condition}")
+        summaries = export_results(model, inputs, args.output_dir / name)
+        accepted = sum(r["accepted"] for r in summaries)
+        requested = sum(r["demand"] for r in summaries)
+        comparison.append({
+            "scenario": name, "solver": solver_name, "status": "optimal",
+            "total_slots": sum(inputs[4].values()), "demand": requested,
+            "accepted": accepted, "rejected": requested - accepted,
+            "acceptance_rate": round(accepted / requested, 6) if requested else 0,
+        })
+        print(f"\nScenario: {name}")
+        display(model, solver_name)
+    write_csv(args.output_dir / "scenario_comparison.csv", comparison)
+    print(f"\nResults saved to {args.output_dir.resolve()}")
 
 
 if __name__ == "__main__":

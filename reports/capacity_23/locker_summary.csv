@@ -1,0 +1,5 @@
+locker_id,capacity,demand,accepted,rejected,acceptance_rate
+hopkins,23,234.0,118,116.0,0.504274
+caleido,23,233.0,116,117.0,0.497854
+enara,23,222.0,115,107.0,0.518018
+alcala_norte,23,220.0,115,105.0,0.522727

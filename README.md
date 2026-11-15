@@ -14,7 +14,7 @@ The implementation uses [Pyomo](https://www.pyomo.org/) and the open-source
 .
 ├── article/                 # Reference paper
 ├── data/
-│   ├── demand.csv           # Forecast demand by day and ship option
+│   ├── demand.csv           # Synthetic demand by locker, day, and ship option
 │   ├── locker.csv           # Locker IDs and capacities
 │   └── occupancy.csv        # Probability of remaining by package age
 ├── src/
@@ -54,12 +54,12 @@ still occupies a slot `k` days after arrival.
 ### Demand constraint
 
 ```text
-sum(y[l,s,t] for l) <= demand[s,t]
+y[l,s,t] <= demand[l,s,t]  for every locker, ship option, and day
 ```
 
-Because the current `demand.csv` has no `locker_id` column, demand is
-treated as a pool shared across lockers. With the current single-locker data,
-this is equivalent to `y[s,t] <= demand[s,t]`.
+Demand is specific to each location. Unused space at one locker cannot serve
+another location's demand. The four locker problems are independent, although
+they are solved together in one model.
 
 ## Input data
 
@@ -69,20 +69,33 @@ Ship-option columns must match between `demand.csv` and `occupancy.csv`.
 
 ```csv
 locker_id,capacity
-L1,30
+hopkins,46
+caleido,46
+enara,46
+alcala_norte,46
 ```
 
 Each locker ID must be unique and capacity must be a positive integer.
+The 46-slot capacities are assumed configurations, not verified measurements.
 
 ### `data/demand.csv`
 
 ```csv
-day,two_day,standard
-1,12,15
-2,14,18
+locker_id,day,two_day,standard
+hopkins,1,18,20
+hopkins,2,20,16
 ```
 
-Demand must be nonnegative. Each row represents forecast arrivals for one day.
+Demand must be finite and nonnegative. Each row represents one locker and
+arrival day. Every locker/day pair must occur exactly once; planning days
+must be consecutive integers starting at 1.
+
+The saved synthetic data contain 909 requests over four locations and seven
+days: independent Poisson totals with mean 33 per location per day, followed
+by a binomial split with probability 0.40 for two-day shipping, using NumPy's
+default random generator and seed 42. These are assumed demand scenarios,
+not measured demand or population-calibrated forecasts. The solver never
+regenerates demand.
 
 ### `data/occupancy.csv`
 
@@ -90,6 +103,8 @@ Demand must be nonnegative. Each row represents forecast arrivals for one day.
 days_since_arrival,two_day,standard
 0,1.00,1.00
 1,0.25,0.70
+2,0.00,0.25
+3,0.00,0.00
 ```
 
 Probabilities must lie between 0 and 1. The
@@ -99,7 +114,13 @@ to remain one day after arrival.
 
 ## Assumptions
 
-- The locker is empty immediately before the first planning day.
+- All four lockers start empty.
+- Every package uses one slot; compartment sizes are ignored.
+- Deliveries occur before pickups each day.
+- Identical age-based occupancy probabilities apply to all locations and days.
+- Probabilities equal 1 at age zero and cannot increase with age.
+- Module III only: demand and pickup probabilities are supplied inputs.
+- Occupancy after the last planning day has no objective penalty.
 - Packages are indivisible, so acceptance variables are integers.
 - Occupancy is enforced in expectation.
 - Occupancy beyond the largest age in `occupancy.csv` is treated as zero.
@@ -190,9 +211,44 @@ The program prints:
 3. Expected capacity reservations by ship option.
 4. Expected total locker occupancy by day.
 
-For the current data, the maximum throughput is 43 packages. Multiple optimal
-allocations can exist, so the package mix may vary while the objective value
-remains the same.
+The program also writes these files to `reports/base/`:
+
+- `decisions.csv`: demand, accepted, rejected, and expected slots by option.
+- `daily_occupancy.csv`: capacity, expected occupancy, and unused capacity.
+- `locker_summary.csv`: weekly demand, accepted, and rejected by location.
+
+Run all what-if scenarios with:
+
+```bash
+python src/solve_capacity.py --scenarios
+```
+
+This uses the same saved demand for every run: base capacities from the CSV
+(currently 46 each), 23 slots each, 69 slots each, and base capacities with
+all pickups delayed one day. Delayed-pickup occupancy is 1 at ages 0 and 1;
+thereafter it equals the original probability at age minus one. Scenario
+runs do not alter any input files.
+
+Results are saved in `reports/base/`, `reports/capacity_23/`,
+`reports/capacity_69/`, and `reports/slower_pickups/`.
+`reports/scenario_comparison.csv` summarizes the scenarios in the current run.
+Use `--output-dir PATH` to choose another destination. Re-running replaces
+the corresponding result files.
+
+Verified results for the current data, using integer acceptance quantities:
+
+| Scenario | Slots per locker | Requests | Accepted | Rejected |
+| --- | ---: | ---: | ---: | ---: |
+| Base | 46 | 909 | 803 | 106 |
+| Less capacity | 23 | 909 | 464 | 445 |
+| More capacity | 69 | 909 | 909 | 0 |
+| Pickups delayed one day | 46 | 909 | 557 | 352 |
+
+All four runs terminated optimally with HiGHS. More capacity increases
+throughput; slower collection ties up slots and reduces throughput. These
+results describe this synthetic week, not measured Amazon performance.
+Multiple optimal allocations can exist, so individual decisions can differ
+while the maximum throughput remains the same.
 
 ## Troubleshooting
 
