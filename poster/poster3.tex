@@ -1,0 +1,197 @@
+% All poster text, equations, tables and vector diagrams are authored in LaTeX.
+% Build with: python poster/build_poster.py (from repository root).
+\RequirePackage{fix-cm}
+\documentclass{article}
+\usepackage[paperwidth=841mm,paperheight=1189mm,margin=0mm]{geometry}
+\usepackage[T1]{fontenc}
+\usepackage[scaled]{helvet}
+\renewcommand{\familydefault}{\sfdefault}
+\usepackage{amsmath,amssymb,booktabs,array,graphicx,tikz,qrcode}
+\usepackage[hidelinks,hypertexnames=false]{hyperref}
+\usetikzlibrary{arrows.meta,calc}
+\definecolor{navy}{HTML}{071F45}
+\definecolor{ieblue}{HTML}{2446A6}
+\definecolor{pale}{HTML}{EAF0FA}
+\definecolor{softgray}{HTML}{F4F6F9}
+\definecolor{ink}{HTML}{202C40}
+\definecolor{muted}{HTML}{59677D}
+\definecolor{orange}{HTML}{FF9900}
+\definecolor{rejected}{HTML}{CC6259}
+\pagestyle{empty}
+\setlength{\parindent}{0pt}
+\setlength{\parskip}{3mm}
+\setlength{\abovedisplayskip}{3mm}
+\setlength{\belowdisplayskip}{3mm}
+\setlength{\abovedisplayshortskip}{2mm}
+\setlength{\belowdisplayshortskip}{2mm}
+\newcommand{\repo}{https://github.com/dloweieu2025-create/amazon-locker-capacity-optimization}
+\DeclareMathSizes{26}{32}{23}{18}
+\DeclareMathSizes{23}{25}{18}{14}
+\newsavebox{\contentbox}
+% Every text block is checked against its allocated height at compilation.
+\newcommand{\block}[5]{%
+  \node[anchor=north west,inner sep=0pt,outer sep=0pt] at (#1,#2) {\sbox{\contentbox}{\begin{minipage}[t]{#3mm}\setlength{\parskip}{3mm}\raggedright\color{ink}\fontsize{26}{32}\selectfont #5\end{minipage}}%
+  \ifdim\dimexpr\ht\contentbox+\dp\contentbox\relax>#4mm
+    \PackageError{poster}{Block at (#1,#2) has height \the\dimexpr\ht\contentbox+\dp\contentbox\relax; limit #4mm}{Shorten or resize this block.}%
+  \fi
+  \usebox{\contentbox}};%
+}
+\newcommand{\panel}[4]{%
+  \fill[ieblue] (#1,#2) rectangle ++(389,16);
+  \node[anchor=west,inner sep=0pt,text=white,font=\fontsize{34}{39}\selectfont\bfseries]
+    at ($(#1,#2)+(6,8)$) {#3.\quad #4};
+}
+\newcommand{\subhead}[1]{{\color{ieblue}\bfseries #1}\par}
+\newcommand{\note}[1]{{\color{muted}\fontsize{23}{29}\selectfont #1\par}}
+\begin{document}
+\null
+\begin{tikzpicture}[remember picture,overlay,x=1mm,y=-1mm]
+\coordinate (origin) at (current page.north west);
+\begin{scope}[shift={(origin)}]
+% Identity and title.
+\fill[navy] (0,0) rectangle (841,175);
+\fill[orange] (0,175) rectangle (841,177);
+\block{24}{16}{650}{20}{{\color{white}\fontsize{31}{36}\selectfont\bfseries IE UNIVERSITY}}
+\block{24}{35}{670}{15}{{\color{pale}\fontsize{23}{29}\selectfont OPTIMIZATION I / INTEGER CAPACITY RESERVATION}}
+\block{24}{57}{690}{80}{{\color{white}\fontsize{94}{103}\selectfont\bfseries Optimizing Amazon\\Locker Capacity}}
+\block{24}{137}{690}{31}{{\color{white}\fontsize{31}{37}\selectfont A time-coupled integer program for demand acceptance\\and expected locker occupancy}}
+\fill[white] (735,17) rectangle (817,99);
+\node[anchor=north west,inner sep=0pt] at (742,24) {\qrcode[height=68mm]{https://github.com/dloweieu2025-create/amazon-locker-capacity-optimization}};
+\block{740}{104}{78}{15}{{\color{white}\fontsize{23}{28}\selectfont\bfseries CODE + DATA}}
+
+% PURPOSE AND SCOPE: application-specific summary, followed by the reference's sections.
+\block{24}{188}{790}{15}{\subhead{PURPOSE AND SCOPE}}
+\block{24}{207}{790}{43}{{\fontsize{29}{36}\selectfont Reserve scarce locker capacity across ship options and arrival days. We model how accepted packages occupy slots over time, then quantify how locker capacity and pickup speed change optimal weekly throughput.}}
+\foreach \x in {24,226,428,630}{\fill[pale] (\x,261) rectangle ++(187,54);}
+\block{31}{267}{174}{44}{{\color{ieblue}\fontsize{22}{26}\selectfont\bfseries LOCKERS}\par{\color{navy}\fontsize{49}{53}\selectfont\bfseries 4}\par{\fontsize{21}{25}\selectfont 46 slots each in the base case}}
+\block{233}{267}{174}{44}{{\color{ieblue}\fontsize{22}{26}\selectfont\bfseries HORIZON}\par{\color{navy}\fontsize{49}{53}\selectfont\bfseries 7 days}\par{\fontsize{21}{25}\selectfont Synthetic planning instance}}
+\block{435}{267}{174}{44}{{\color{ieblue}\fontsize{22}{26}\selectfont\bfseries REQUESTS}\par{\color{navy}\fontsize{49}{53}\selectfont\bfseries 909}\par{\fontsize{21}{25}\selectfont Two-Day + Standard demand}}
+\block{637}{267}{174}{44}{{\color{ieblue}\fontsize{22}{26}\selectfont\bfseries BASE ACCEPTANCE}\par{\color{navy}\fontsize{49}{53}\selectfont\bfseries 88.3\%}\par{\fontsize{21}{25}\selectfont 803 accepted / 106 rejected}}
+
+% LEFT COLUMN: introduce the application before the notation.
+\panel{24}{330}{1}{Introduction}
+\block{28}{356}{381}{82}{%
+Locker slots remain occupied until collection. Accepting a long-stay package can therefore prevent a future delivery. \textbf{Question:} how many requests of each ship option should each locker accept each day to maximize weekly throughput? We study four lockers and one synthetic week, using a simplified capacity-reservation model motivated by [1].}
+
+\panel{24}{454}{2}{Mathematical formulation}
+\block{28}{480}{381}{408}{%
+\subhead{Sets, parameters and decision variable}
+\renewcommand{\arraystretch}{1.12}
+\begin{tabular}{@{}p{80mm}>{\raggedright\arraybackslash}p{288mm}@{}}
+$\mathcal L$ & Four lockers, indexed by $l$.\\
+$\mathcal S$ & $\{\mathrm{TD},\mathrm{STD}\}$: Two-Day and Standard.\\
+$\mathcal T$ & $\{1,\ldots,7\}$; $t$ is the current day, $v$ the arrival day.\\
+$C_l\in\mathbb Z_{>0}$ & Locker slots; $C_l=46$ in the base case.\\
+$d_{lst}\in\mathbb Z_{\ge0}$ & Requests for locker $l$, option $s$, arrival day $t$.\\
+$q_{sa}\in[0,1]$ & Probability a package remains at age $a$ (days).\\
+$y_{lst}\in\mathbb Z_{\ge0}$ & \textbf{Decision:} number of requests to accept.\\
+\end{tabular}\par\vspace{4mm}
+\subhead{Dwell probabilities and expected occupancy}
+\[
+\setlength{\arraycolsep}{4mm}\begin{array}{c|rrrr}
+ a\ \text{(days)}&0&1&2&3\\\hline
+ q_{\mathrm{TD},a}&1&0.25&0&0\\
+ q_{\mathrm{STD},a}&1&0.70&0.25&0
+\end{array}
+\qquad q_{sa}=0\ (a>3).
+\]
+\begin{equation}
+O_{lt}(y)=\sum_{s\in\mathcal S}\sum_{v=1}^{t}q_{s,t-v}\,y_{lsv}.
+\tag{1}
+\end{equation}
+\note{Earlier arrivals contribute their surviving share to today's expected occupancy. This convolution couples decisions across days.}
+\subhead{Integer linear program}
+\begin{equation}
+\max_y\quad Z(y)=\sum_{l\in\mathcal L}\sum_{s\in\mathcal S}\sum_{t\in\mathcal T}y_{lst}
+\tag{2}
+\end{equation}
+\vspace{-2mm}
+\begin{align}
+0\le y_{lst}\le d_{lst},\quad y_{lst}\in\mathbb Z
+  &\qquad\forall l,s,t,\tag{3}\\
+O_{lt}(y)\le C_l &\qquad\forall l,t.\tag{4}
+\end{align}
+\note{(2) maximizes accepted packages; (3) enforces demand bounds and indivisibility; (4) limits expected slot use.}
+\textbf{Assumptions.} Empty start; one package per slot; no compartment sizes; deliveries before pickups; common dwell probabilities; no penalty for occupancy after day 7.}
+
+\panel{24}{917}{3}{Method and reproducibility}
+\block{28}{944}{381}{160}{%
+\subhead{CSV inputs $\rightarrow$ validation $\rightarrow$ Pyomo $\rightarrow$ HiGHS}
+Saved synthetic demand uses Poisson totals (mean 33) and a 40\% Two-Day split, with random seed 42. Inputs are \texttt{locker.csv}, \texttt{demand.csv} and \texttt{occupancy.csv} [2].
+
+Checks require complete locker/day pairs, positive capacities, matching ship options and nonincreasing probabilities with $q_{s0}=1$.
+
+\textbf{Instance:} 56 integer variables, 56 demand upper bounds and 28 capacity constraints. All four scenario runs terminated \textbf{optimal} with HiGHS. Capacity and dwell profiles change; demand stays fixed.
+\note{Reproduce: \texttt{python src/solve\_capacity.py --scenarios}. Code and data: header QR [2].}}
+
+% RIGHT COLUMN: visible results, exact values, and explicit interpretation.
+\panel{428}{330}{4}{Results}
+\block{432}{356}{381}{25}{\textbf{Same 909 requests in every scenario.} Bars show accepted and rejected packages; labels provide exact counts.}
+\fill[ieblue] (432,388) rectangle ++(6,5);
+\block{443}{386}{70}{12}{{\fontsize{23}{28}\selectfont Accepted}}
+\fill[rejected] (515,388) rectangle ++(6,5);
+\block{526}{386}{70}{12}{{\fontsize{23}{28}\selectfont Rejected}}
+\foreach \yy/\label/\accepted/\denied/\rate in {
+410/{23 slots}/464/445/{51.0\%},
+447/{46 slots (base)}/803/106/{88.3\%},
+484/{69 slots}/909/0/{100.0\%},
+521/{46 + delay}/557/352/{61.3\%}}{
+  \block{432}{\yy}{103}{22}{{\fontsize{24}{29}\selectfont\label}}
+  \pgfmathsetmacro{\aw}{\accepted/909*232}
+  \pgfmathsetmacro{\rw}{\denied/909*232}
+  \fill[ieblue] (540,\yy) rectangle ++(\aw,21);
+  \ifnum\denied>0
+    \fill[rejected] ($(540,\yy)+(\aw,0)$) rectangle ++(\rw,21);
+    \node[anchor=west,inner sep=0pt,text=white,font=\fontsize{25}{29}\selectfont\bfseries]
+      at ($(540,\yy)+(\aw+3,10.5)$) {\denied};
+  \fi
+  \node[anchor=west,inner sep=0pt,text=white,font=\fontsize{25}{29}\selectfont\bfseries]
+    at ($(540,\yy)+(3,10.5)$) {\accepted};
+  \node[anchor=west,inner sep=0pt,text=navy,font=\fontsize{22}{27}\selectfont\bfseries]
+    at (776,\yy+10.5) {\rate};
+}
+\block{432}{554}{381}{28}{\note{\textbf{Figure 1.} Slots are per locker. ``46 + delay'' shifts all pickups one day later at 46 slots. Percentages are accepted demand. Data: saved scenario reports [2].}}
+\block{432}{588}{381}{142}{%
+\renewcommand{\arraystretch}{1.18}\setlength{\tabcolsep}{7mm}
+\begin{tabular*}{\linewidth}{@{\extracolsep{\fill}}lrrr@{}}\toprule
+\textbf{Scenario} & \textbf{Accepted} & \textbf{Rejected} & \textbf{Rate}\\\midrule
+23 slots & 464 & 445 & 51.0\%\\
+46 slots & \textbf{803} & 106 & \textbf{88.3\%}\\
+69 slots & 909 & 0 & 100.0\%\\
+46 slots, pickup $+1$ day & 557 & 352 & 61.3\%\\\bottomrule
+\end{tabular*}\par\vspace{2mm}
+\note{\textbf{Table 1.} Integer optima for the same synthetic week [2].}
+\[A=\sum_{l,s,t}y^*_{lst},\qquad R=909-A,\qquad
+\eta=\frac{A}{909}.\]
+\note{$A$: acceptances; $R$: rejections; $\eta$: acceptance rate; $*$: optimum.}}
+
+\panel{428}{741}{5}{Interpretation and limitations}
+\block{432}{767}{381}{196}{%
+\[C'\ge C\quad\Longrightarrow\quad Z^*(C',q)\ge Z^*(C,q).\]
+Extra capacity enlarges the feasible set: moving from 46 to 69 slots accepts \textbf{106 more packages} in this instance.
+\[\widetilde q_{s0}=1,\qquad\widetilde q_{sa}=q_{s,a-1}\quad(a\ge1).\]
+This one-day pickup delay reduces accepted demand by \textbf{246 packages} (88.3\% to 61.3\%). Capacity and pickup behavior both matter.
+
+\textbf{Limits.} Expected occupancy is not a guarantee against physical overflow. Synthetic demand, one week and omitted size classes limit generalization. Multiple optimal daily allocations may exist.
+\par\smallskip\note{\textbf{Next step:} validate forecasts and test overflow risk under sampled pickup times over a rolling planning horizon.}}
+
+\panel{428}{984}{6}{Conclusion}
+\fill[pale] (428,1010) rectangle (817,1105);
+\block{435}{1018}{375}{79}{%
+\textbf{The optimal acceptance plan serves 803 of 909 requests with 46 slots per locker.} Increasing capacity to 69 slots serves every request; delaying pickups by one day reduces acceptance to 557. Jointly planning demand and dwell time makes these throughput trade-offs explicit.}
+
+% REFERENCES: numbered in order of first appearance; no instructional sample text.
+\fill[softgray] (0,1121) rectangle (841,1189);
+\block{24}{1128}{793}{13}{{\color{ieblue}\fontsize{25}{30}\selectfont\bfseries REFERENCES AND REPRODUCIBILITY}}
+\block{24}{1144}{793}{38}{{\fontsize{20}{25}\selectfont
+[1] Sethuraman et al. (2024), ``Amazon Locker Capacity Management,'' \emph{Manufacturing \& Service Operations Management}. doi:10.1287/msom.2021.0544.\\[2mm]
+[2] \href{\repo}{Amazon Locker Capacity Optimization: code, synthetic inputs and saved scenario reports.} Repository link in header QR.\\[2mm]
+\color{muted}Results are illustrative, not measured Amazon performance. Visual structure retains the earlier ICFO / baposter-inspired design.}}
+\end{scope}
+\end{tikzpicture}
+\end{document}
+
+
+
+
+
