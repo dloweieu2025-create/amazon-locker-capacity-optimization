@@ -11,10 +11,10 @@ ROOT = Path(__file__).resolve().parents[1]
 REPORTS, DATA = ROOT / "reports", ROOT / "data"
 OUT = Path(__file__).resolve().parent / "images"
 OUT.mkdir(parents=True, exist_ok=True)
-NAVY, BLUE = colors.HexColor("#071F45"), colors.HexColor("#2446A6")
-ORANGE, RED = colors.HexColor("#FF9900"), colors.HexColor("#D95D55")
-PALE, GRID = colors.HexColor("#DCE8F8"), colors.HexColor("#D8DEE8")
-TEAL, PURPLE = colors.HexColor("#00A6A6"), colors.HexColor("#7D5BA6")
+NAVY, BLUE = colors.HexColor("#100E7D"), colors.HexColor("#1917AD")
+ORANGE, RED = colors.HexColor("#A15F10"), colors.HexColor("#602521")
+PALE, GRID = colors.HexColor("#4B5C72"), colors.HexColor("#E6EAEF")
+TEAL, PURPLE = colors.HexColor("#207575"), colors.HexColor("#564072")
 
 
 def read(path):

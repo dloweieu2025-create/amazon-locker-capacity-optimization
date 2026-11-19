@@ -6,25 +6,26 @@
 \usepackage[hidelinks]{hyperref}
 \graphicspath{{images/}}
 \geometry{tmargin=0mm,bmargin=4mm,lmargin=9mm,rmargin=9mm}
-\definecolor{navy}{RGB}{7,31,69}
-\definecolor{ieblue}{RGB}{36,70,166}
-\definecolor{lightblue}{RGB}{220,232,248}
-\definecolor{amazonorange}{RGB}{255,153,0}
+\definecolor{navy}{RGB}{13,71,161} 
+\definecolor{ieblue}{RGB}{21,101,192} 
+\definecolor{lightblue}{RGB}{25,118,210}
+\definecolor{amazonorange}{RGB}{245,124,0}
 \definecolor{muted}{RGB}{92,105,126}
 \definecolor{softgray}{RGB}{244,246,249}
-\newcommand{\titlefont}{\bfseries\Huge\color{white}}
-\newcommand{\authorfont}{\bfseries\Large\color{white}}
-\newcommand{\headerfont}{\bfseries\large\color{white}}
+\definecolor{offwhite}{RGB}{250,249,246}
+\newcommand{\titlefont}{\bfseries\Huge\color{offwhite}}
+\newcommand{\authorfont}{\bfseries\Large\color{offwhite}}
+\newcommand{\headerfont}{\bfseries\large\color{offwhite}}
 \newcommand{\smallnote}[1]{{\scriptsize\color{muted}#1}}
 \newcommand{\metric}[2]{\begin{minipage}[c]{0.22\linewidth}\centering{\color{navy}\bfseries\LARGE #1}\\[-1mm]{\small #2}\end{minipage}}
 \begin{document}
 \background{}
-\begin{poster}{grid=false,borderColor=white,headerColorOne=ieblue,headerColorTwo=ieblue,headerFontColor=white,boxColorOne=white,headerheight=0mm,boxheaderheight=2.2em,headershape=rectangle,headerfont=\headerfont,textborder=none,headerborder=none,background=plain,bgColorOne=white,boxshade=plain,columns=2}{}{}{}{}
+\begin{poster}{grid=false,borderColor=offwhite,headerColorOne=ieblue,headerColorTwo=ieblue,headerFontColor=offwhite,boxColorOne=offwhite,headerheight=0mm,boxheaderheight=2.2em,headershape=rectangle,headerfont=\headerfont,textborder=none,headerborder=none,background=plain,bgColorOne=offwhite,boxshade=plain,columns=2}{}{}{}{}
 \small
 
 \headerbox{}{name=titlebox,span=2,column=0,row=0,boxheaderheight=0mm,headerColorOne=navy,headerColorTwo=navy,boxColorOne=navy,boxColorTwo=navy}{
 \vspace{5mm}\begin{minipage}{0.94\textwidth}
-\color{white}\rule{\textwidth}{3pt}\vspace{3mm}
+\color{offwhite}\rule{\textwidth}{3pt}\vspace{3mm}
 {\titlefont Optimizing Amazon Locker Capacity}\par\vspace{4mm}
 {\authorfont YOUR NAME \quad COLLEAGUE NAME}\par\vspace{2mm}
 {\large Ship-option capacity reservation under uncertain demand and pickup times}\par
