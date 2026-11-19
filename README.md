@@ -77,6 +77,7 @@ alcala_norte,46
 
 Each locker ID must be unique and capacity must be a positive integer.
 The 46-slot capacities are assumed configurations, not verified measurements.
+The real-life locations that these lockers are modeled off of are included on this document: https://docs.google.com/document/d/1_viIj7C2rx0FSYzGNlHOiCVw-nTY8Gyfh8lXWRdTdyw/edit?usp=sharing
 
 ### `data/demand.csv`
 
