@@ -81,9 +81,12 @@ def load_inputs(locker_file, demand_file, occupancy_file):
     return lockers, options, days, ages, capacity, demand, occupancy
 
 
-def build_model(data):
+def build_model(data, alpha=1.0):
+    if not math.isfinite(alpha) or not 0 < alpha <= 1:
+        raise ValueError("alpha must satisfy 0 < alpha <= 1")
     lockers, options, days, ages, capacity, demand, occupancy = data
     model = pyo.ConcreteModel("locker_capacity_reservation")
+    model.alpha = pyo.Param(initialize=alpha)
     model.L = pyo.Set(initialize=lockers, ordered=True)
     model.S = pyo.Set(initialize=options, ordered=True)
     model.T = pyo.Set(initialize=days, ordered=True)
@@ -105,7 +108,7 @@ def build_model(data):
     model.capacity_limit = pyo.Constraint(
         model.L,
         model.T,
-        rule=lambda m, l, t: sum(m.x[l, s, t] for s in m.S) <= capacity[l],
+        rule=lambda m, l, t: sum(m.x[l, s, t] for s in m.S) <= m.alpha * capacity[l],
     )
     # Each location has its own demand; packages cannot be reassigned.
     model.demand_limit = pyo.Constraint(
@@ -179,6 +182,7 @@ def write_csv(path, rows):
 def export_results(model, data, output_dir):
     """Export decisions, daily occupancy, and location-level summaries."""
     lockers, options, days, ages, capacity, demand, occupancy = data
+    alpha = pyo.value(model.alpha)
     output_dir.mkdir(parents=True, exist_ok=True)
     decisions, daily, summaries = [], [], []
     for l in lockers:
@@ -194,6 +198,7 @@ def export_results(model, data, output_dir):
             occupied = sum(pyo.value(model.x[l, s, t]) for s in options)
             daily.append({
                 "locker_id": l, "day": t, "capacity": capacity[l],
+                "alpha": alpha, "effective_capacity": alpha * capacity[l],
                 "expected_occupancy": round(occupied, 6),
                 "unused_capacity": round(capacity[l] - occupied, 6),
             })
@@ -202,6 +207,7 @@ def export_results(model, data, output_dir):
                        for s in options for t in days)
         summaries.append({
             "locker_id": l, "capacity": capacity[l], "demand": requested,
+            "alpha": alpha, "effective_capacity": alpha * capacity[l],
             "accepted": accepted, "rejected": round(requested - accepted, 6),
             "acceptance_rate": round(accepted / requested, 6) if requested else 0,
         })
@@ -218,11 +224,15 @@ def main():
     parser.add_argument("--occupancy", type=Path, default=DATA_DIR / "occupancy.csv")
     parser.add_argument("--solver", default="auto")
     parser.add_argument("--tee", action="store_true")
+    parser.add_argument("--alpha", type=float, default=1.0,
+                        help="Fraction of capacity available for expected occupancy (0 < alpha <= 1)")
     parser.add_argument("--scenarios", action="store_true",
                         help="Also solve 23-slot, 69-slot, and slower-pickup scenarios")
     parser.add_argument("--output-dir", type=Path, default=PROJECT_ROOT / "reports",
                         help="Directory for result CSV files")
     args = parser.parse_args()
+    if not math.isfinite(args.alpha) or not 0 < args.alpha <= 1:
+        parser.error("--alpha must satisfy 0 < alpha <= 1")
     data = load_inputs(args.locker, args.demand, args.occupancy)
     solver_name, solver = get_solver(args.solver)
     scenarios = [("base", data)]
@@ -234,7 +244,7 @@ def main():
         ])
     comparison = []
     for name, inputs in scenarios:
-        model = build_model(inputs)
+        model = build_model(inputs, alpha=args.alpha)
         results = solver.solve(model, tee=args.tee)
         if results.solver.termination_condition != TerminationCondition.optimal:
             raise RuntimeError(f"{name}: solver termination: "
@@ -245,10 +255,13 @@ def main():
         comparison.append({
             "scenario": name, "solver": solver_name, "status": "optimal",
             "total_slots": sum(inputs[4].values()), "demand": requested,
+            "alpha": args.alpha,
+            "effective_total_capacity": args.alpha * sum(inputs[4].values()),
             "accepted": accepted, "rejected": requested - accepted,
             "acceptance_rate": round(accepted / requested, 6) if requested else 0,
         })
         print(f"\nScenario: {name}")
+        print(f"Capacity factor (alpha): {args.alpha:g}")
         display(model, solver_name)
     write_csv(args.output_dir / "scenario_comparison.csv", comparison)
     print(f"\nResults saved to {args.output_dir.resolve()}")

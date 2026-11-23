@@ -51,6 +51,13 @@ sum(q[s,t-v] * y[l,s,v] for s and arrival days v <= t) <= capacity[l]
 Here, `q[s,k]` is the probability that a package using ship option `s`
 still occupies a slot `k` days after arrival.
 
+The optional capacity factor `--alpha` multiplies the right-hand side by
+`alpha`, where `0 < alpha <= 1`. The default is 1 (full physical capacity).
+For example, `--alpha 0.9` limits expected occupancy to 41.4 slots at a
+46-slot locker. This buffer leaves room for pickup variability but does not
+guarantee that actual occupancy stays within capacity or establish an overflow
+probability.
+
 ### Demand constraint
 
 ```text
@@ -179,6 +186,16 @@ Display the HiGHS solver log:
 python src/solve_capacity.py --tee
 ```
 
+Compare capacity buffers in separate output directories:
+
+```bash
+python src/solve_capacity.py --alpha 1.00 --output-dir reports/alpha_100
+python src/solve_capacity.py --alpha 0.95 --output-dir reports/alpha_095
+python src/solve_capacity.py --alpha 0.90 --output-dir reports/alpha_090
+```
+
+The same factor applies to every scenario when combined with `--scenarios`.
+
 Explicitly select HiGHS:
 
 ```bash
@@ -217,6 +234,11 @@ The program also writes these files to `reports/base/`:
 - `decisions.csv`: demand, accepted, rejected, and expected slots by option.
 - `daily_occupancy.csv`: capacity, expected occupancy, and unused capacity.
 - `locker_summary.csv`: weekly demand, accepted, and rejected by location.
+
+Daily occupancy and locker summaries also record `alpha` and
+`effective_capacity` (alpha times physical capacity). `unused_capacity`
+continues to mean physical capacity minus expected occupancy.
+The scenario comparison records `alpha` and `effective_total_capacity`.
 
 Run all what-if scenarios with:
 

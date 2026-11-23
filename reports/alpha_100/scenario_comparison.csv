@@ -1,0 +1,5 @@
+scenario,solver,status,total_slots,demand,alpha,effective_total_capacity,accepted,rejected,acceptance_rate
+base,appsi_highs,optimal,184,909.0,1.0,184.0,803,106.0,0.883388
+capacity_23,appsi_highs,optimal,92,909.0,1.0,92.0,464,445.0,0.510451
+capacity_69,appsi_highs,optimal,276,909.0,1.0,276.0,909,0.0,1.0
+slower_pickups,appsi_highs,optimal,184,909.0,1.0,184.0,557,352.0,0.612761
