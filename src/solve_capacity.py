@@ -4,6 +4,7 @@
 import argparse
 import csv
 import math
+import random
 from pathlib import Path
 
 import pyomo.environ as pyo
@@ -11,6 +12,15 @@ from pyomo.opt import TerminationCondition
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 DATA_DIR = PROJECT_ROOT / "data"
+DEFAULT_ALPHA = 0.9
+
+
+def safety_factor(value):
+    """Allow a capacity buffer, or alpha=1 for the unbuffered benchmark."""
+    alpha = float(value)
+    if not math.isfinite(alpha) or not 0 < alpha <= 1:
+        raise ValueError("alpha must be finite and satisfy 0 < alpha <= 1")
+    return alpha
 
 
 def read_csv(path):
@@ -81,9 +91,11 @@ def load_inputs(locker_file, demand_file, occupancy_file):
     return lockers, options, days, ages, capacity, demand, occupancy
 
 
-def build_model(data):
+def build_model(data, alpha=DEFAULT_ALPHA):
+    alpha = safety_factor(alpha)
     lockers, options, days, ages, capacity, demand, occupancy = data
     model = pyo.ConcreteModel("locker_capacity_reservation")
+    model.alpha = pyo.Param(initialize=alpha)
     model.L = pyo.Set(initialize=lockers, ordered=True)
     model.S = pyo.Set(initialize=options, ordered=True)
     model.T = pyo.Set(initialize=days, ordered=True)
@@ -105,7 +117,7 @@ def build_model(data):
     model.capacity_limit = pyo.Constraint(
         model.L,
         model.T,
-        rule=lambda m, l, t: sum(m.x[l, s, t] for s in m.S) <= capacity[l],
+        rule=lambda m, l, t: sum(m.x[l, s, t] for s in m.S) <= m.alpha * capacity[l],
     )
     # Each location has its own demand; packages cannot be reassigned.
     model.demand_limit = pyo.Constraint(
@@ -131,8 +143,38 @@ def get_solver(requested):
     raise RuntimeError("No solver available. Install one with: pip install highspy")
 
 
+def run_fcfs(data, alpha=DEFAULT_ALPHA, seed=42):
+    """Accept requests in seeded daily order without looking at future demand.
+
+    Use the optimizer's expected occupancy convention and safety factor. This
+    evaluates a greedy policy, not a simulation of realized package pickups.
+    """
+    lockers, options, days, ages, capacity, demand, occupancy = data
+    model = build_model(data, alpha=alpha)
+    for variable in model.y.values():
+        variable.set_value(0)
+    for locker in lockers:
+        limit = pyo.value(model.alpha) * capacity[locker]
+        for day in days:
+            # Aggregate CSVs have no timestamps. Shuffle individual requests,
+            # using a separate stream per locker/day and the same seed in all
+            # scenarios. Sorting avoids implicit priority from CSV column order.
+            requests = [s for s in sorted(options)
+                        for _ in range(math.floor(demand[locker, s, day]))]
+            random.Random(f"{seed}:{locker}:{day}").shuffle(requests)
+            occupied = math.fsum(pyo.value(model.x[locker, s, day]) for s in options)
+            for option in requests:
+                if occupied + 1 > limit + 1e-9:
+                    break
+                variable = model.y[locker, option, day]
+                variable.set_value(pyo.value(variable) + 1)
+                occupied += 1
+    return model
+
+
 def display(model, solver_name):
     print(f"Solver: {solver_name}")
+    print(f"Safety factor (alpha): {pyo.value(model.alpha):g}")
     print(f"Maximum throughput: {pyo.value(model.objective):.0f} packages")
     print("\nAccepted packages")
     print("locker,day,ship_option,accepted")
@@ -179,6 +221,7 @@ def write_csv(path, rows):
 def export_results(model, data, output_dir):
     """Export decisions, daily occupancy, and location-level summaries."""
     lockers, options, days, ages, capacity, demand, occupancy = data
+    alpha = pyo.value(model.alpha)
     output_dir.mkdir(parents=True, exist_ok=True)
     decisions, daily, summaries = [], [], []
     for l in lockers:
@@ -194,14 +237,17 @@ def export_results(model, data, output_dir):
             occupied = sum(pyo.value(model.x[l, s, t]) for s in options)
             daily.append({
                 "locker_id": l, "day": t, "capacity": capacity[l],
+                "alpha": alpha, "effective_capacity": alpha * capacity[l],
                 "expected_occupancy": round(occupied, 6),
                 "unused_capacity": round(capacity[l] - occupied, 6),
+                "unused_effective_capacity": round(alpha * capacity[l] - occupied, 6),
             })
         requested = sum(demand[l, s, t] for s in options for t in days)
         accepted = sum(int(round(pyo.value(model.y[l, s, t])))
                        for s in options for t in days)
         summaries.append({
             "locker_id": l, "capacity": capacity[l], "demand": requested,
+            "alpha": alpha, "effective_capacity": alpha * capacity[l],
             "accepted": accepted, "rejected": round(requested - accepted, 6),
             "acceptance_rate": round(accepted / requested, 6) if requested else 0,
         })
@@ -217,7 +263,11 @@ def main():
     parser.add_argument("--demand", type=Path, default=DATA_DIR / "demand.csv")
     parser.add_argument("--occupancy", type=Path, default=DATA_DIR / "occupancy.csv")
     parser.add_argument("--solver", default="auto")
+    parser.add_argument("--alpha", type=safety_factor, default=DEFAULT_ALPHA,
+                        help="Safety factor: 0 < alpha <= 1 (default: 0.9; 1 disables the buffer)")
     parser.add_argument("--tee", action="store_true")
+    parser.add_argument("--fcfs-seed", type=int, default=42,
+                        help="Seed for the FCFS within-day request order (default: 42)")
     parser.add_argument("--scenarios", action="store_true",
                         help="Also solve 23-slot, 69-slot, and slower-pickup scenarios")
     parser.add_argument("--output-dir", type=Path, default=PROJECT_ROOT / "reports",
@@ -234,22 +284,36 @@ def main():
         ])
     comparison = []
     for name, inputs in scenarios:
-        model = build_model(inputs)
+        model = build_model(inputs, alpha=args.alpha)
         results = solver.solve(model, tee=args.tee)
         if results.solver.termination_condition != TerminationCondition.optimal:
             raise RuntimeError(f"{name}: solver termination: "
                                f"{results.solver.termination_condition}")
         summaries = export_results(model, inputs, args.output_dir / name)
+        fcfs = run_fcfs(inputs, alpha=args.alpha, seed=args.fcfs_seed)
+        fcfs_summaries = export_results(fcfs, inputs, args.output_dir / name / "fcfs")
+        fcfs_accepted = sum(r["accepted"] for r in fcfs_summaries)
         accepted = sum(r["accepted"] for r in summaries)
         requested = sum(r["demand"] for r in summaries)
+        gain = accepted - fcfs_accepted
         comparison.append({
             "scenario": name, "solver": solver_name, "status": "optimal",
             "total_slots": sum(inputs[4].values()), "demand": requested,
+            "alpha": args.alpha,
+            "total_effective_capacity": args.alpha * sum(inputs[4].values()),
             "accepted": accepted, "rejected": requested - accepted,
             "acceptance_rate": round(accepted / requested, 6) if requested else 0,
+            "fcfs_seed": args.fcfs_seed, "fcfs_accepted": fcfs_accepted,
+            "fcfs_rejected": requested - fcfs_accepted,
+            "fcfs_acceptance_rate": round(fcfs_accepted / requested, 6) if requested else 0,
+            "optimization_gain": gain,
+            "optimization_gain_percent": round(100 * gain / fcfs_accepted, 6)
+            if fcfs_accepted else "",
         })
         print(f"\nScenario: {name}")
         display(model, solver_name)
+        print(f"\nFCFS throughput (seed {args.fcfs_seed}): {fcfs_accepted} packages")
+        print(f"Optimization adds {gain} packages compared with FCFS")
     write_csv(args.output_dir / "scenario_comparison.csv", comparison)
     print(f"\nResults saved to {args.output_dir.resolve()}")
 
