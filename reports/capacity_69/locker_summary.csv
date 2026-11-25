@@ -1,5 +1,5 @@
-locker_id,capacity,demand,accepted,rejected,acceptance_rate
-hopkins,69,234.0,234,0.0,1.0
-caleido,69,233.0,233,0.0,1.0
-enara,69,222.0,222,0.0,1.0
-alcala_norte,69,220.0,220,0.0,1.0
+locker_id,capacity,demand,alpha,effective_capacity,accepted,rejected,acceptance_rate
+hopkins,69,234.0,0.9,62.1,234,0.0,1.0
+caleido,69,233.0,0.9,62.1,233,0.0,1.0
+enara,69,222.0,0.9,62.1,222,0.0,1.0
+alcala_norte,69,220.0,0.9,62.1,218,2.0,0.990909
