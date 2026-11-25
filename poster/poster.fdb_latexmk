@@ -1,0 +1,18 @@
+# Fdb version 4
+["pdflatex"] 1794925507.68458 "poster.tex" "poster.pdf" "poster" 1794925534.21442 2
+  "/etc/texmf/web2c/texmf.cnf" 1794925442.10721 475 c0e671620eb5563b2130f56340a5fde8 ""
+  "/usr/share/texlive/texmf-dist/tex/latex/base/article.cls" 1705352648 20144 147463a6a579f4597269ef9565205cfe ""
+  "/usr/share/texlive/texmf-dist/tex/latex/base/size10.clo" 1705352648 8448 dbc0dbf4156c0bb9ba01a1c685d3bad0 ""
+  "/usr/share/texlive/texmf-dist/web2c/texmf.cnf" 1707919699 40399 f2c302f7d2af602abb742093540a5834 ""
+  "/usr/share/texmf/web2c/texmf.cnf" 1707919699 40399 f2c302f7d2af602abb742093540a5834 ""
+  "/var/lib/texmf/web2c/pdftex/pdflatex.fmt" 1794925477 6800791 7810b9ed06f0bdbae6f3775f659cf7ee ""
+  "Poster.sty" 0 -1 0 ""
+  "baposter.cls" 1794836822.64238 49838 5680b48785752a3db78cddd30cdb010e ""
+  "poster.aux" 1794925507.68007 32 3985256e7290058c681f74d7a3565a19 "pdflatex"
+  "poster.tex" 1794925235.42712 6938 ca2e4235c8e5ec82484f9b55a0c3ea71 ""
+  "xkeyval.sty" 0 -1 0 ""
+  (generated)
+  "poster.aux"
+  "poster.log"
+  "poster.pdf"
+  (rewritten before read)
